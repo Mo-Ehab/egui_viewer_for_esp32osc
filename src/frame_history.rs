@@ -1,5 +1,7 @@
 use egui::util::History;
 
+// Additonal functions to view frame processing time
+
 pub struct FrameHistory {
     frame_times: History<f32>,
 }
