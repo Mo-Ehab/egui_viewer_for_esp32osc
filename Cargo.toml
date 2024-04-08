@@ -1,0 +1,16 @@
+[package]
+name = "egui_oscilliscope"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+eframe = "0.27.1"
+egui = "0.27.1"
+egui_extras = "0.27.1"
+egui_plot = "0.27.1"
+realfft = "3.3.0"
+regex = "1.10.4"
+rustfft = "6.2.0"
+serialport = "4.3.0"
