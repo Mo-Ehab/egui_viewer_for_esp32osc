@@ -117,17 +117,17 @@ impl UARTthread for UARTdata {
                 if i ==0 || i ==1 || i > (number_data.len() - 2){   // truncate readings at start and end of port reading because they give wrong readings
                 }
                 else{
-                    if self.graph.last().unwrap()[0] + (500.0/1000000.0) > self.viewerdata.xscale{ // Wrap data back to the start of graph
-                        self.graph.push([self.graph.last().unwrap()[0] + (500.0/1000000.0) , -1.0]);
-                        self.graph.push([0.0 + (500.0/1000000.0) , -1.0]);
+                    if self.graph.last().unwrap()[0] + (100.0/1000000.0) > self.viewerdata.xscale{ // Wrap data back to the start of graph
+                        self.graph.push([self.graph.last().unwrap()[0] + (100.0/1000000.0) , -1.0]);
+                        self.graph.push([0.0 + (100.0/1000000.0) , -1.0]);
                     } 
                     else{
-                        self.graph.push([self.graph.last().unwrap()[0] + (500.0/1000000.0) , item/1241.1]); // Append readings to graph, currently one reading every 500 microsecond
+                        self.graph.push([self.graph.last().unwrap()[0] + (100.0/1000000.0) , item/1241.1]); // Append readings to graph, currently one reading every 500 microsecond
                     }
                 }
 
-                if self.viewerdata.xscale * (1000000.0/500.0) < self.graph.len() as f64{ // Remove old readings to save memory and compute
-                    self.graph.drain(..( self.graph.len() as f64 - self.viewerdata.xscale * (1000000.0/500.0)  )  as usize );
+                if self.viewerdata.xscale * (1000000.0/100.0) < self.graph.len() as f64{ // Remove old readings to save memory and compute
+                    self.graph.drain(..( self.graph.len() as f64 - self.viewerdata.xscale * (1000000.0/100.0)  )  as usize );
                 }
             }
 
