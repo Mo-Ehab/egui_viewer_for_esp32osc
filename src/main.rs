@@ -161,7 +161,7 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
 
             ui.vertical_centered(|ui| {
-                ui.heading("Eosci-scope");
+                ui.heading("esp32osc");
             });
 
             ui.horizontal(|ui| {
