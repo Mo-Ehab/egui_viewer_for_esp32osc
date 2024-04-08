@@ -3,7 +3,7 @@
 
 Egui based GUI to view readings from [esp32osc](https://github.com/Mo-Ehab/esp32osc/)
 
-![View of the scope interface](app.png)
+![View of the scope interface](/app.png)
 ---
 
 View readings from esp32 through usb. Currently implmented features:
