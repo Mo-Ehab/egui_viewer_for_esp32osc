@@ -35,10 +35,11 @@ fn main() -> Result<(), eframe::Error> {
     let mut uart_data = UARTdata::default(); // Data for the UART reader thread
     let (uart_send , uart_receive ) = channel(); // Channel to send voltage data from UART thread to main thread
     let (main_send , main_receive ) = channel(); // Channel to send viewer data from main thread to receiver
+    let (usb_connect_send , usb_connect_receive ) = channel(); // Channel to send usb connection data from main thread to receiver
 
     // UART receive thread
     thread::spawn(move || {
-            uart_data.uart_thread(uart_send, main_receive);
+            uart_data.uart_thread(uart_send, main_receive, usb_connect_receive);
     });
 
     // Main (viewing) thread
@@ -53,7 +54,9 @@ fn main() -> Result<(), eframe::Error> {
                 viewerdata: Viewerdata { xscale: 5.0, yscale: 5.0, frozen:false },
                 uart_receiver: uart_receive,
                 main_send: main_send,
-                freq : Freq::Off
+                freq: Freq::Off,
+                usb_connect_send: usb_connect_send,
+                selected_usb : "Available ports".to_owned()
             })
         }),
     )
@@ -68,7 +71,9 @@ struct MyApp {
     viewerdata: Viewerdata,
     uart_receiver: Receiver<Vec<[f64; 2]>>,
     main_send: Sender<Viewerdata>,
-    freq: Freq
+    freq: Freq,
+    usb_connect_send: Sender<(bool, String)>,
+    selected_usb: String
 }
 
 // UART thread Data
@@ -87,51 +92,69 @@ impl Default for UARTdata {
 }
 
 trait UARTthread {
-    fn uart_thread(&mut self, uart_send: Sender<Vec<[f64; 2]>>, main_receive: Receiver<Viewerdata>) -> ! ;
+    fn uart_thread(&mut self, uart_send: Sender<Vec<[f64; 2]>>, main_receive: Receiver<Viewerdata>, usb_connect_receive: Receiver<(bool,String)>) -> ! ;
 }
 
 impl UARTthread for UARTdata {
 
-    fn uart_thread(&mut self, uart_send: Sender<Vec<[f64; 2]>>, main_receive: Receiver<Viewerdata> ) -> ! {
-        thread::sleep(Duration::from_millis(1000));
+    fn uart_thread(&mut self, uart_send: Sender<Vec<[f64; 2]>>, main_receive: Receiver<Viewerdata> , usb_connect_receive: Receiver<(bool,String)>) -> ! {
+        let mut connected = false;
         let mut port = serialport::new("COM10", 921600 )
-            .timeout(Duration::from_millis(10))
-            .open_native().expect("Failed to open port");
-
+                .timeout(Duration::from_millis(10))
+                .open_native();
         loop{
- 
-            self.viewerdata = main_receive.try_iter().last().unwrap_or( self.viewerdata);
-            let mut serial_buf:Vec<u8> = vec![0; 100];
-            port.read(serial_buf.as_mut_slice()).expect("Found no data!"); // Read from UART to buffer
+            let usb_port = usb_connect_receive.try_iter().last().unwrap_or( (false,"".to_owned()));
+            if usb_port.0{ // get the port from UI and try connect
+                std::mem::drop(port);
+                port = serialport::new(usb_port.1, 921600 )
+                .timeout(Duration::from_millis(10))
+                .open_native();
+                if port.is_ok() {
+                    connected = true;
+                }
+                else{
+                    connected = false;
+                }
+            };
+            if connected {
+                self.viewerdata = main_receive.try_iter().last().unwrap_or( self.viewerdata);
+                let mut serial_buf:Vec<u8> = vec![0; 100];
 
-            let data_string = String::from_utf8_lossy(&serial_buf) ; //convert buffer data to one long string
+                match port {
+                    Ok(ref mut v) => v.read(serial_buf.as_mut_slice()).unwrap_or_default(),
+                    Err(ref _e) => 0,
+                };
+                
+                let data_string = String::from_utf8_lossy(&serial_buf) ; //convert buffer data to one long string
 
-            let data_vector : Vec<&str> = data_string.split(", ").collect(); // Convert string data to array of strings
-            let number_data : Vec<f64>  = data_vector.iter().map(|&f| f.parse::<f64>().unwrap_or(0.0)).collect(); // Convert data to vector of float values
+                let data_vector : Vec<&str> = data_string.split(", ").collect(); // Convert string data to array of strings
+                let number_data : Vec<f64>  = data_vector.iter().map(|&f| f.parse::<f64>().unwrap_or(0.0)).collect(); // Convert data to vector of float values
 
-            // Update graph if UI not frozen 
-            if !self.viewerdata.frozen{
+                // Update graph if UI not frozen 
+                if !self.viewerdata.frozen{
 
-                for (i, item) in number_data.iter().enumerate(){
-                    if i ==0 || i ==1 || i > (number_data.len() - 2){   // truncate readings at start and end of port reading because they give wrong readings
-                    }
-                    else{
-                        if self.graph.last().unwrap()[0] + (150.0/1000000.0) > self.viewerdata.xscale{ // Wrap data back to the start of graph
-                            self.graph.push([self.graph.last().unwrap()[0] + (150.0/1000000.0) , -1.0]);
-                            self.graph.push([0.0 + (150.0/1000000.0) , -1.0]);
-                        } 
+                    for (i, item) in number_data.iter().enumerate(){
+                        if i ==0 || i ==1 || i > (number_data.len() - 2){   // truncate readings at start and end of port reading because they give wrong readings
+                        }
                         else{
-                            self.graph.push([self.graph.last().unwrap()[0] + (150.0/1000000.0) , item/1240.0]); // Append readings to graph, currently one reading every 150 microsecond
+                            if self.graph.last().unwrap()[0] + (150.0/1000000.0) > self.viewerdata.xscale{ // Wrap data back to the start of graph
+                                self.graph.push([self.graph.last().unwrap()[0] + (150.0/1000000.0) , -1.0]);
+                                self.graph.push([0.0 + (150.0/1000000.0) , -1.0]);
+                            } 
+                            else{
+                                self.graph.push([self.graph.last().unwrap()[0] + (150.0/1000000.0) , item/1240.0]); // Append readings to graph, currently one reading every 150 microsecond
+                            }
+                        }
+
+                        if self.viewerdata.xscale * (1000000.0/150.0) < self.graph.len() as f64{ // Remove old readings to save memory and compute
+                            self.graph.drain(..( self.graph.len() as f64 - self.viewerdata.xscale * (1000000.0/150.0)  )  as usize );
                         }
                     }
 
-                    if self.viewerdata.xscale * (1000000.0/150.0) < self.graph.len() as f64{ // Remove old readings to save memory and compute
-                        self.graph.drain(..( self.graph.len() as f64 - self.viewerdata.xscale * (1000000.0/150.0)  )  as usize );
-                    }
                 }
+                uart_send.send(self.graph.clone()).expect("Channel died")
 
-            }
-            uart_send.send(self.graph.clone()).expect("Channel died")
+            };
 
         }
     }
@@ -143,7 +166,7 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
     
         ctx.request_repaint(); // Update the screen as fast as possible to view new readings
-
+        
         let my_plot = Plot::new("My Plot").legend(Legend::default());
         let mut plot_rect = None;
 
@@ -167,6 +190,24 @@ impl eframe::App for MyApp {
             ui.horizontal(|ui| {
 
                 ui.vertical_centered(|ui| {
+
+                    ui.horizontal_centered(|ui| { // Chose the usb port to connect to
+                        egui::ComboBox::from_label("")
+                            .selected_text( self.selected_usb.clone())
+                            .show_ui(ui, |ui| {
+                                let ports = serialport::available_ports().unwrap_or(vec![]);
+
+                                for p in ports {
+                                    let usb_name = p.port_name.clone();
+                                    ui.selectable_value(&mut self.selected_usb, p.port_name, format!("{}", usb_name));
+                                }
+                            }
+                        );
+                        if ui.button("Connect").clicked() {
+                            println!("{}", self.selected_usb);
+                            self.usb_connect_send.send((true, self.selected_usb.clone())).ok();
+                        };
+                    });
 
                     ui.horizontal_centered(|ui| {
                         ui.selectable_value(&mut self.freq, Freq::Off, "Time");
