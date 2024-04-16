@@ -128,12 +128,11 @@ impl UARTthread for UARTdata {
                 let data_string = String::from_utf8_lossy(&serial_buf) ; //convert buffer data to one long string
 
                 let data_vector : Vec<&str> = data_string.split(", ").collect(); // Convert string data to array of strings
-                let number_data : Vec<f64>  = data_vector.iter().map(|&f| f.parse::<f64>().unwrap_or(0.0)).collect(); // Convert data to vector of float values
-
+                let number_data : Vec<u16>  = data_vector.iter().map(|&f| !(f.parse::<u16>().unwrap_or(0) + 61439)).collect(); // Convert data to vector of float values
                 // Update graph if UI not frozen 
                 if !self.viewerdata.frozen{
 
-                    for (i, item) in number_data.iter().enumerate(){
+                    for (i, item ) in number_data.iter().enumerate(){
                         if i ==0 || i ==1 || i > (number_data.len() - 2){   // truncate readings at start and end of port reading because they give wrong readings
                         }
                         else{
@@ -142,7 +141,7 @@ impl UARTthread for UARTdata {
                                 self.graph.push([0.0 + (150.0/1000000.0) , -1.0]);
                             } 
                             else{
-                                self.graph.push([self.graph.last().unwrap()[0] + (150.0/1000000.0) , item/1240.0]); // Append readings to graph, currently one reading every 150 microsecond
+                                self.graph.push([self.graph.last().unwrap()[0] + (150.0/1000000.0) , (*item as f64) /1240.0]); // Append readings to graph, currently one reading every 150 microsecond
                             }
                         }
 
